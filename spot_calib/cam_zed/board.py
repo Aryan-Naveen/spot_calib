@@ -102,10 +102,12 @@ def detect(img: np.ndarray, board: Board, fast: bool = False) -> tuple[np.ndarra
     gray = _to_gray(img)
     corners = None
     if fast:
-        ok, c = cv2.findChessboardCorners(gray, board.size, flags=cv2.CALIB_CB_ADAPTIVE_THRESH |
-                                          cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK)
+        # The classic detector misses boards whose squares run to the board edge (no white
+        # margin); the sector-based detector handles them and is fast on preview-sized images.
+        ok, c = cv2.findChessboardCornersSB(gray, board.size, flags=cv2.CALIB_CB_NORMALIZE_IMAGE |
+                                            cv2.CALIB_CB_EXHAUSTIVE)
         if ok:
-            corners = c.reshape(-1, 2)
+            corners = c.reshape(-1, 2).astype(np.float64)
     else:
         ok, c = cv2.findChessboardCornersSB(gray, board.size, flags=cv2.CALIB_CB_NORMALIZE_IMAGE |
                                             cv2.CALIB_CB_EXHAUSTIVE | cv2.CALIB_CB_ACCURACY)

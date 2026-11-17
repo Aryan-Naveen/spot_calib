@@ -55,7 +55,7 @@ def cmd_cam_zed(a):
         src = "user override (--zed-link-T-left-optical)"
     else:
         link_T_opt = zed_frames.link_T_left_optical(a.zed_model, zed.info.get("baseline_m"))
-        src = f"zed_wrapper {a.zed_model} URDF defaults (verify with tf2_echo, see README)"
+        src = f"zed_wrapper {a.zed_model} URDF defaults (verified for zed2i)"
     cal = Calibrator(zed, spot, board, a.robot_name, a.out, a.calib_yaml, link_T_opt, src)
     app = build_app(cal)
     print(f"\n  Open http://<this-host>:{a.port}/ from any machine on the network.\n  Session: {cal.session}\n")
@@ -97,7 +97,7 @@ def main(argv=None):
     c.add_argument("--zed-serial", type=int)
     c.add_argument("--zed-model", default="zed2i")
     c.add_argument("--zed-link-T-left-optical", help='"x y z qx qy qz qw" from tf2_echo <robot>_zed_camera_link '
-                                                    '<robot>_zed_left_camera_optical_frame')
+                                                    '<robot>_zed_left_camera_frame_optical')
     c.add_argument("--spot-ip"), c.add_argument("--spot-user"), c.add_argument("--spot-password")
     c.add_argument("--host", default="0.0.0.0")
     c.add_argument("--port", type=int, default=8080)

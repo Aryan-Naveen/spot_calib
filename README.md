@@ -64,12 +64,17 @@ pytest -q
    `frontleft_T_zed_camera_link = frontleft_T_frontleft_fisheye (Spot snapshot) · fisheye_T_zed_left_optical (solved) · zed_left_optical_T_zed_camera_link`.
 
 ### One-time check: ZED camera_link offset
-The last factor above comes from the zed-ros2-wrapper URDF. This repo ships zed2i defaults for it,
-but they were not checked against an installed wrapper. Run this once on the robot while the ZED
-driver is up:
+The last factor above comes from the zed-ros2-wrapper URDF. The shipped zed2i defaults match a live
+zed2i on Jazzy: translation `[-0.010, 0.060, 0.015]` and quaternion (xyzw) `[-0.5, 0.5, -0.5, 0.5]`.
+If you use a different camera model or wrapper version, check it once while the ZED driver is up.
+
+The dcist launch publishes TF under the robot namespace (`/<robot>/tf`, `/<robot>/tf_static`), so
+remap `tf2_echo` to it. Newer wrappers name the optical frame `…_left_camera_frame_optical`; older
+ones use `…_left_camera_optical_frame`.
 
 ```bash
-ros2 run tf2_ros tf2_echo <robot>_zed_camera_link <robot>_zed_left_camera_optical_frame
+ros2 run tf2_ros tf2_echo <robot>_zed_camera_link <robot>_zed_left_camera_frame_optical \
+  --ros-args -r /tf:=/<robot>/tf -r /tf_static:=/<robot>/tf_static
 ```
 
 If the result differs from the defaults in `spot_calib/cam_zed/zed_frames.py`, pass it in
@@ -242,8 +247,9 @@ which the real-Spot tmux config sets.
    ```
 4. **Verify** after relaunching:
    ```bash
-   ros2 run tf2_ros tf2_echo <robot>/frontleft <robot>_zed_camera_link     # should match the exported entry
-   ros2 run tf2_ros tf2_echo <robot>/body <robot>/livox
+   R="--ros-args -r /tf:=/<robot>/tf -r /tf_static:=/<robot>/tf_static"   # TF is namespaced
+   ros2 run tf2_ros tf2_echo <robot>/frontleft <robot>_zed_camera_link $R  # should match the exported entry
+   ros2 run tf2_ros tf2_echo <robot>/body <robot>/livox $R
    ```
    In rviz, the accumulated LiDAR map should look crisp while the robot turns in place, and the ZED
    depth cloud should line up with the LiDAR points.

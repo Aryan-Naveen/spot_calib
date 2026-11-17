@@ -1,15 +1,17 @@
 """ZED frame conventions (zed-ros2-wrapper URDF) used to convert the solved optical-frame pose
 to ``<robot>_zed_camera_link``, which is the child frame in dcist's calibration.yaml.
 
-zed_wrapper URDF chain: camera_link -> camera_center -> left_camera_frame -> left_camera_optical_frame
+zed_wrapper URDF chain: camera_link -> camera_center -> left_camera_frame -> left_camera_frame_optical
+(older wrappers: left_camera_optical_frame)
 
   camera_center      : xyz = (screw_offset_x, 0, height/2 - screw_offset_z), pitch = bottom_slope
   left_camera_frame  : xyz = (optical_offset_x, baseline/2, 0)
   left_optical_frame : rpy = (-pi/2, 0, -pi/2)
 
-These defaults are believed correct for a zed2i but were NOT verified against an installed
-zed_wrapper. Verify once on the robot with
-    ros2 run tf2_ros tf2_echo <robot>_zed_camera_link <robot>_zed_left_camera_optical_frame
+The zed2i defaults were verified against a live zed2i on ROS 2 Jazzy:
+translation [-0.010, 0.060, 0.015], quaternion xyzw [-0.5, 0.5, -0.5, 0.5]. For other models, check with
+    ros2 run tf2_ros tf2_echo <robot>_zed_camera_link <robot>_zed_left_camera_frame_optical \
+        --ros-args -r /tf:=/<robot>/tf -r /tf_static:=/<robot>/tf_static
 and, if it differs, pass the printed values via --zed-link-T-left-optical "x y z qx qy qz qw".
 """
 

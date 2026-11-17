@@ -199,7 +199,7 @@ def leave_one_out(samples: list[Sample], cams, obj, mode: str, init: dict) -> di
     ests: dict[str, list] = {}
     for k in range(len(samples)):
         sub = samples[:k] + samples[k + 1:]
-        sol = solve(sub, cams, obj, mode, init, max_nfev=60)
+        sol = solve(sub, cams, obj, mode, init)  # must converge fully, else LOO is inflated
         if sol is None:
             continue
         keys = {"body": sol.body_T_Z} if mode == "joint" else sol.S_T_Z

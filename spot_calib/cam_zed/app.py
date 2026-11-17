@@ -135,7 +135,7 @@ class Calibrator:
                     dt, dr = tf.pose_diff(np.array(cur["S_T_Z_T"][c]), T)
                     info["deviation"][c] = {"t_mm": dt * 1e3, "r_deg": dr}
         try:
-            sol = solver.solve(approved + [s], self.models, self.obj, "independent", max_nfev=60)
+            sol = solver.solve(approved + [s], self.models, self.obj, "independent")
             if sol:
                 info["whatif"] = {"rms": sol.rms, "sample_rms": sol.sample_rms.get(s.id, {})}
         except Exception as e:

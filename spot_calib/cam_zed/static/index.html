@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spot ZED Calibration</title>
+<link rel="stylesheet" href="/common/common.css">
+</head>
+<body>
+<header>
+  <h1>Spot ↔ ZED extrinsics</h1>
+  <span class="sub" id="sub"></span>
+  <span style="flex:1"></span>
+  <span id="done" class="alldone no"></span>
+</header>
+<main>
+  <section class="panel">
+    <h2>Live</h2>
+    <div class="grid-streams" id="streams"></div>
+    <div class="row" style="margin-top:10px; align-items:center">
+      <button class="primary" id="capture">Capture (space)</button>
+      <span class="muted">Hold the board still and fully visible in the ZED and at least one Spot camera.</span>
+    </div>
+    <div id="capmsg" style="margin-top:8px"></div>
+  </section>
+
+  <section class="panel" id="pendingPanel" style="display:none">
+    <h2>Review capture <span id="pid"></span></h2>
+    <div class="grid-streams" id="pendingImgs"></div>
+    <div class="kv" id="pendingInfo" style="margin:8px 0"></div>
+    <div class="row">
+      <button class="ok" id="approve">Approve (a)</button>
+      <button class="bad" id="reject">Reject (r)</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Accuracy <span class="muted" id="solving"></span></h2>
+    <div class="badges" id="badges"></div>
+    <div style="margin-top:10px" id="coverage"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Samples</h2>
+    <p class="muted" style="margin:0 0 6px">Click a header to sort. Large deviation or RMS usually means a bad detection or a moving board; exclude it.</p>
+    <table id="samples"></table>
+  </section>
+
+  <section class="panel">
+    <h2>Export</h2>
+    <div class="row" style="align-items:center">
+      <label>Solution <select id="mode"><option value="independent">independent (per camera)</option><option value="joint">joint (body frame)</option></select></label>
+      <label>Parent <select id="parent"></select></label>
+      <button class="primary" id="export">Export</button>
+      <button id="copy">Copy</button>
+    </div>
+    <p class="muted">Paste into <code>dcist_launch_system/platforms/&lt;platform&gt;/calibration.yaml</code>, replacing the existing <code>…_zed_camera_link</code> entry.</p>
+    <textarea id="yaml" readonly placeholder="Export to generate the calibration.yaml entry"></textarea>
+    <div id="exportInfo" style="margin-top:8px"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Thresholds</h2>
+    <div class="row" id="thresholds"></div>
+  </section>
+</main>
+<script src="/common/common.js"></script>
+<script>
+let S = null, pendingId = null;
+
+async function refresh() {
+  try { S = await api("/api/state"); } catch (e) { return; }
+  $("#sub").textContent = `${S.robot_name} · board ${S.board.cols}×${S.board.rows} inner corners @ ${(S.board.square*100).toFixed(1)} cm · session ${S.session}`;
+  if (!$("#streams").children.length) {
+    $("#streams").innerHTML = S.cams.map((c) => `<figure><img src="/stream/${c}"><figcaption>${c}</figcaption></figure>`).join("");
+    $("#parent").innerHTML = S.cams.filter((c) => c !== "zed").map((c) => `<option>${c}</option>`).join("");
+    $("#thresholds").innerHTML = Object.entries(S.thresholds).map(([k, v]) =>
+      `<label class="muted">${k} <input type="number" step="any" data-k="${k}" value="${v}"></label>`).join("");
+    $("#thresholds").querySelectorAll("input").forEach((i) => i.onchange = () => post("/api/thresholds", { [i.dataset.k]: i.value }).then(refresh));
+  }
+  renderBadges($("#badges"), S.badges);
+  renderDone($("#done"), S.badges);
+  $("#solving").textContent = S.solving ? "· solving…" : "";
+  const cov = S.result.coverage || {};
+  $("#coverage").innerHTML = Object.keys(cov).length ? `<div class="muted" style="margin-bottom:4px">Image coverage (where corners have been seen)</div>` +
+    `<div class="row">${Object.entries(cov).map(([c, g]) => `<div>${renderHeat(g)}<div class="muted">${c}</div></div>`).join("")}</div>` : "";
+  sortableTable($("#samples"), S.samples, [
+    { key: "id", label: "#" }, { key: "status", label: "status" }, { key: "cams", label: "cameras" },
+    { key: "rms_zed", label: "ZED rms px", fmt: (v) => fmt(v, 2) }, { key: "rms_spot", label: "Spot rms px", fmt: (v) => fmt(v, 2) },
+    { key: "dev_t_mm", label: "dev mm", fmt: (v) => fmt(v, 1) }, { key: "dev_r_deg", label: "dev °", fmt: (v) => fmt(v, 2) },
+  ], (r) => `<button onclick="toggle(${r.id})">${r.status === "approved" ? "exclude" : "include"}</button>`);
+  renderPending(S.pending);
+}
+
+function renderPending(p) {
+  if (!p) { $("#pendingPanel").style.display = "none"; pendingId = null; return; }
+  $("#pendingPanel").style.display = "";
+  if (pendingId !== p.id) {
+    pendingId = p.id;
+    $("#pid").textContent = `#${p.id}`;
+    $("#pendingImgs").innerHTML = S.cams.map((c) => `<figure><img class="thumb" src="/api/sample/${p.id}/img/${c}.jpg?${Date.now()}"><figcaption>${c}${p.missing[c] ? " — " + esc(p.missing[c]) : ""}</figcaption></figure>`).join("");
+  }
+  const rows = [["cameras", p.cams.join(", ")], ["board motion", fmt(p.board_motion_px, 2) + " px"]];
+  for (const [c, v] of Object.entries(p.pnp_rms)) rows.push([`PnP rms ${c}`, fmt(v, 2) + " px"]);
+  for (const [c, v] of Object.entries(p.deviation)) rows.push([`deviation vs estimate (${c})`, `${fmt(v.t_mm, 1)} mm / ${fmt(v.r_deg, 2)}°`]);
+  if (p.whatif) for (const [c, v] of Object.entries(p.whatif.rms)) rows.push([`RMS if approved (${c})`, fmt(v, 2) + " px"]);
+  $("#pendingInfo").innerHTML = rows.map(([k, v]) => `<span class="muted">${esc(k)}</span><span>${esc(v)}</span>`).join("");
+}
+
+async function capture() {
+  $("#capture").disabled = true; showMsg($("#capmsg"), "Capturing…");
+  try { await post("/api/capture"); showMsg($("#capmsg"), ""); }
+  catch (e) { showMsg($("#capmsg"), e.message, true); }
+  $("#capture").disabled = false; refresh();
+}
+async function approve() { if (pendingId !== null) { await post(`/api/sample/${pendingId}/approve`); refresh(); } }
+async function reject() { if (pendingId !== null) { await post(`/api/sample/${pendingId}/reject`); refresh(); } }
+async function toggle(id) { await post(`/api/sample/${id}/reject`); refresh(); }
+
+$("#capture").onclick = capture; $("#approve").onclick = approve; $("#reject").onclick = reject;
+$("#export").onclick = async () => {
+  try {
+    const r = await api(`/api/export?mode=${$("#mode").value}&parent=${$("#parent").value}`);
+    $("#yaml").value = r.yaml;
+    const c = r.report.comparison_with_existing;
+    $("#exportInfo").innerHTML = `<div class="kv"><span class="muted">saved to</span><span>${esc(r.session)}</span>` +
+      (c ? `<span class="muted">vs existing entry</span><span>Δt ${fmt(c.delta_translation_m * 1000, 1)} mm, ΔR ${fmt(c.delta_rotation_deg, 2)}°</span>` : `<span class="muted">vs existing entry</span><span>none found</span>`) +
+      `<span class="muted">camera_link offset</span><span>${esc(r.report.zed_link_T_left_optical_source)}</span></div>`;
+  } catch (e) { $("#exportInfo").innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+};
+$("#copy").onclick = () => copyText($("#yaml"));
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key === " ") { e.preventDefault(); capture(); }
+  if (e.key === "a") approve();
+  if (e.key === "r") reject();
+});
+refresh(); setInterval(refresh, 1500);
+</script>
+</body>
+</html>

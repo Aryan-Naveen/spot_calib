@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spot_calib"
+version = "0.1.0"
+description = "Extrinsic calibration tools for Boston Dynamics Spot: ZED <-> body cameras (checkerboard PnP) and LiDAR <-> body (hand-eye from a ROS 2 bag)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy", "opencv-python", "flask", "pyyaml"]
+
+[project.optional-dependencies]
+spot = ["bosdyn-client"]
+lidar = ["small_gicp"]
+dev = ["pytest"]
+
+[project.scripts]
+spot-calib = "spot_calib.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["spot_calib*"]
+
+[tool.setuptools.package-data]
+"*" = ["static/*"]
